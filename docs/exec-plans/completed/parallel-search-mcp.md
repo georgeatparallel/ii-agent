@@ -9,11 +9,11 @@ to their custom MCP settings. Anonymous search uses Fast mode and is rate limite
 
 ## Progress
 
-- [x] Read repository and linked contributor guidance; use a branch from `develop`.
-- [x] Add an opt-in entry to `frontend/src/constants/mcp.tsx`.
-- [x] Verify the catalog configuration through the existing MCP loader.
-- [x] Run frontend formatting, lint and TypeScript checks.
-- [x] Build documentation with `npm run build` (static site generated).
+- [x] (2026-10-10 17:58Z) Read repository and linked contributor guidance; use a branch from `develop`.
+- [x] (2026-10-10 17:58Z) Add an opt-in entry to `frontend/src/constants/mcp.tsx`.
+- [x] (2026-10-10 17:58Z) Verify the catalog configuration through the existing MCP loader.
+- [x] (2026-10-10 17:58Z) Run frontend formatting, lint and TypeScript checks.
+- [x] (2026-10-10 17:58Z) Build documentation with `npm run build` (static site generated).
 
 ## Repository context and implementation
 
@@ -34,8 +34,63 @@ inside `docs`. Select the actual catalog entry, validate its JSON with
 to search and fetch a page without saved or environment credentials. Observe
 the outgoing endpoint and User-Agent on discovery, search and fetch. Compare
 all older catalog entries with the base to ensure they are unchanged. Run
-Prettier and ESLint on the changed TypeScript file, then `npm run build` inside
-`docs`. No Python files change, so Ruff is not needed.
+the following commands from the indicated directory:
+
+```bash
+# frontend/
+npx prettier --check src/constants/mcp.tsx
+npx eslint src/constants/mcp.tsx
+npx tsc --noEmit
+
+# docs/
+npm run build
+```
+
+Each command must exit successfully; the documentation build must generate
+static files. No Python files change, so Ruff is not needed.
+
+To repeat tool execution, copy the Parallel Search catalog JSON to
+`/tmp/parallel-search.json`, then run from the repository root:
+
+```bash
+uv run python - <<'PY'
+import asyncio
+import json
+import uuid
+from pathlib import Path
+from ii_tool.utils import load_tools_from_mcp
+
+async def main():
+    config = json.loads(Path("/tmp/parallel-search.json").read_text())
+    tools = await load_tools_from_mcp(config)
+    by_name = {tool.name: tool for tool in tools}
+    session = uuid.uuid4().hex
+    cases = {
+        "web_search": {
+            "objective": "Find the official Python asyncio documentation",
+            "search_queries": ["Python asyncio documentation"],
+            "session_id": session,
+        },
+        "web_fetch": {
+            "urls": ["https://docs.python.org/3/library/asyncio.html"],
+            "session_id": session,
+        },
+    }
+    for name, arguments in cases.items():
+        result = await by_name[name].execute(arguments)
+        assert result.is_error is not True
+        assert "asyncio" in str(result.llm_content).lower()
+        print(name, result.user_display_content)
+
+asyncio.run(main())
+PY
+```
+
+Both tools must return content about asyncio. Use an empty credential
+configuration and inspect outgoing HTTP requests to check that the catalog
+User-Agent survives discovery and execution and that no Authorization header
+is sent. Preserve required network proxy settings when isolating environment
+variables. A network or rate-limit failure is a validation failure, not a pass.
 
 ## Surprises and discoveries
 
@@ -46,6 +101,8 @@ Prettier and ESLint on the changed TypeScript file, then `npm run build` inside
   server. This change preserves that workflow.
 
 ## Decision log
+
+Decisions below were recorded on 2026-10-10 by the Parallel contributor.
 
 - Add one catalog item instead of changing default web search routing. Existing
   entries and saved configurations remain unchanged.
